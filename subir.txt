@@ -1,0 +1,13 @@
+## Cómo publicar en GitHub Pages
+
+1. Sube este repositorio a GitHub:
+   ```bash
+   git init
+   git add index.html README.md LICENSE
+   git commit -m "Mythic Totem v1.0"
+   git remote add origin https://github.com/TU_USUARIO/mythic_totem.git
+   git push -u origin main
+   ```
+2. Ve a **Settings → Pages** en tu repo
+3. En "Source", selecciona `main` y carpeta `/ (root)`
+4. Guarda. Tu herramienta estará disponible en `https://TU_USUARIO.github.io/mythic_totem/`

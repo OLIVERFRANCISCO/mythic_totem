@@ -185,7 +185,7 @@ const I18N = {
     pattern_title: 'Patrón Actual',
     blocks_label: 'bloques',
     replacement_title: 'Reemplazos (Replacement)',
-    replacement_warning: '⚠️ Si no se define ningún reemplazo, <strong>todos</strong> los bloques del patrón se sustituirán por AIR al invocarse el mob.',
+    replacement_warning: '♻️ El Replacement se genera <strong>automáticamente como reflejo del patrón</strong>: cada bloque se sustituye por AIR al invocarse el mob. Añade un reemplazo para cambiar el material de una coordenada concreta.',
     btn_add_replacement: '+ Añadir reemplazo',
     btn_build: 'Construir',
     btn_delete: 'Borrar',
@@ -245,7 +245,7 @@ const I18N = {
     pattern_title: 'Current Pattern',
     blocks_label: 'blocks',
     replacement_title: 'Replacements',
-    replacement_warning: '⚠️ If no replacements are defined, <strong>all</strong> pattern blocks will be replaced with AIR when the mob spawns.',
+    replacement_warning: '♻️ Replacement is generated <strong>automatically as a mirror of the pattern</strong>: every block turns to AIR when the mob spawns. Add a replacement to change the material of a specific coordinate.',
     btn_add_replacement: '+ Add replacement',
     btn_build: 'Build',
     btn_delete: 'Delete',
@@ -584,7 +584,7 @@ const state = {
   mode: 'build',            // 'build' | 'delete'
   headTexture: null,        // { type: 'playerName'|'skinTexture'|'skinURL'|'skinID'|null, value: '' }
   headBlock: 'PLAYER_HEAD', // Bloque disparador (Head) — viene de la selección en Cabezas
-  replacements: [{ x:0, y:0, z:0, material:'AIR' }],
+  replacements: [],          // Overrides manuales; el Replacement del YAML se genera como reflejo del patrón
   mobName: 'TotemGuardian',
   mobType: 'ZOMBIE',
   mobDisplay: '&6Tótem Guardián',
@@ -1130,6 +1130,28 @@ window._removeReplacement = (index) => {
 // YAML GENERATION
 // ============================================================
 
+// El Replacement de MythicMobs necesita UNA entrada por cada bloque del
+// Pattern (misma coordenada); si falta alguna, ese bloque no se sustituye.
+// Por eso se genera como reflejo del patrón: cada bloque -> AIR, salvo que
+// exista un reemplazo manual en esa coordenada (override). Los overrides
+// en coordenadas fuera del patrón se conservan tal cual.
+function buildReplacementLines() {
+  const overrideByKey = new Map(state.replacements.map(r => [`${r.x},${r.y},${r.z}`, r]));
+  const covered = new Set();
+  const lines = [];
+  for (const b of state.blocks) {
+    const key = `${b.x},${b.y},${b.z}`;
+    const ov = overrideByKey.get(key);
+    lines.push(`    - ${key} ${ov ? ov.material : 'AIR'}`);
+    covered.add(key);
+  }
+  for (const r of state.replacements) {
+    const key = `${r.x},${r.y},${r.z}`;
+    if (!covered.has(key)) lines.push(`    - ${key} ${r.material}`);
+  }
+  return lines;
+}
+
 function generateYAML() {
   const name = state.mobName || 'Totem';
   const type = state.mobType || 'ZOMBIE';
@@ -1158,10 +1180,9 @@ function generateYAML() {
     return `    - ${b.x},${b.y},${b.z} ${mat}`;
   });
 
-  // Replacement lines
-  const replLines = state.replacements.map(r =>
-    `    - ${r.x},${r.y},${r.z} ${r.material}`
-  );
+  // Replacement lines: reflejo del patrón — una entrada por cada bloque,
+  // AIR por defecto (o el material de un reemplazo manual en esa coordenada)
+  const replLines = buildReplacementLines();
 
   return [
     `${name}:`,
@@ -1207,7 +1228,7 @@ async function copyYAML() {
 
 function importYAML(yamlText) {
   try {
-    const lines = yamlText.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    const lines = yamlText.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
     let mobName = 'ImportedTotem';
     let mobType = 'ZOMBIE';
     let mobDisplay = '&6Tótem';
@@ -1219,9 +1240,12 @@ function importYAML(yamlText) {
     let inReplacement = false;
     let inTotem = false;
 
-    for (const line of lines) {
-      // Top-level key (mob name)
-      if (/^[A-Za-z_][A-Za-z0-9_]*:/.test(line) && !line.startsWith(' ') && !line.startsWith('-')) {
+    for (const raw of lines) {
+      const line = raw.trim();
+
+      // Top-level key (mob name): solo si la línea NO está indentada; si no,
+      // 'Pattern:', 'Type:', etc. se confunden con el nombre del mob
+      if (!/^\s/.test(raw) && /^[A-Za-z_][A-Za-z0-9_]*:/.test(line)) {
         mobName = line.replace(/:$/, '').trim();
         inTotem = false;
         inPattern = false;
@@ -1294,7 +1318,7 @@ function importYAML(yamlText) {
     state.mobDisplay = mobDisplay;
     if (importedHeadBlock) state.headBlock = importedHeadBlock;
     state.blocks = blocks;
-    state.replacements = replacements.length > 0 ? replacements : [{ x: 0, y: 0, z: 0, material: 'AIR' }];
+    state.replacements = replacements; // el espejo del patrón cubre lo que no venga en el YAML
 
     // Update form fields
     document.getElementById('mob-name').value = mobName;
@@ -1317,7 +1341,7 @@ function importYAML(yamlText) {
 
 function resetScene() {
   state.blocks = [];
-  state.replacements = [{ x: 0, y: 0, z: 0, material: 'AIR' }];
+  state.replacements = [];
   state.selectedMaterial = 'STONE';
   state.headTexture = null;
   state.headBlock = 'PLAYER_HEAD';
